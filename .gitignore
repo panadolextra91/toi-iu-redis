@@ -35,3 +35,8 @@ Thumbs.db
 # Build output (if any)
 /bin/
 /dist/
+
+.env*
+.flaskenv*
+!.env.project
+!.env.vault
