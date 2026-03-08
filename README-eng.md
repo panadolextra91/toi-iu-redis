@@ -4,12 +4,12 @@
 
 > **"Caching improves performance. But uncontrolled caching creates new bottlenecks. Intelligent request coalescing stabilizes the system."**
 
-Dự án demo cho môn **Net Centric Programming** — chứng minh bằng số liệu thật rằng:
+Demo project for the **Net Centric Programming** course — proving with real data that:
 
-1. Database **là bottleneck** khi không cache
-2. Cache-Aside **tăng throughput** đáng kể
-3. Thundering Herd **là vấn đề thật** khi TTL hết hạn
-4. `singleflight` **giải quyết stampede** chỉ với vài dòng code
+1. The database **is the bottleneck** when not cached.
+2. Cache-Aside **significantly increases throughput**.
+3. Thundering Herd **is a real problem** when TTL expires.
+4. `singleflight` **solves stampede issues** with just a few lines of code.
 
 Tech stack: **Go** · **Redis** · `net/http` · `go-redis/v9` · `x/sync/singleflight`
 
@@ -46,30 +46,30 @@ Tech stack: **Go** · **Redis** · `net/http` · `go-redis/v9` · `x/sync/single
 ## 🏗 Architecture
 
 ```
-               200 Concurrent Requests
-                       │
-                       ▼
-              ┌─────────────────┐
-              │   HTTP Server   │  :8080
-              │   (net/http)    │
-              └────────┬────────┘
-                       │
-              ┌────────▼────────┐
-              │  Service Layer  │  4 modes
-              │                 │
-              │  ┌────────────┐ │
-              │  │ NoCache    │─┼──────────────────────┐
-              │  │ CacheAside │─┼──┐                   │
-              │  │ CacheHerd  │─┼──┤                   │
-              │  │ CacheProt. │─┼──┤ + singleflight    │
-              │  └────────────┘ │  │                   │
-              └─────────────────┘  │                   │
-                                   ▼                   ▼
-                          ┌──────────────┐    ┌──────────────┐
-                          │    Redis     │    │   Fake DB    │
-                          │  (go-redis)  │    │  pool=10     │
-                          │  TTL: 3-30s  │    │  latency=200ms│
-                          └──────────────┘    └──────────────┘
+                200 Concurrent Requests
+                        │
+                        ▼
+               ┌─────────────────┐
+               │   HTTP Server   │  :8080
+               │   (net/http)    │
+               └────────┬────────┘
+                        │
+               ┌────────▼────────┐
+               │  Service Layer  │  4 modes
+               │                 │
+               │  ┌────────────┐ │
+               │  │ NoCache    │─┼──────────────────────┐
+               │  │ CacheAside │─┼──┐                   │
+               │  │ CacheHerd  │─┼──┤                   │
+               │  │ CacheProt. │─┼──┤ + singleflight    │
+               │  └────────────┘ │  │                   │
+               └─────────────────┘  │                   │
+                                    ▼                   ▼
+                           ┌──────────────┐    ┌──────────────┐
+                           │    Redis     │    │   Fake DB    │
+                           │  (go-redis)  │    │  pool=10     │
+                           │  TTL: 3-30s  │    │  latency=200ms│
+                           └──────────────┘    └──────────────┘
 ```
 
 ### Timeout Hierarchy
@@ -88,7 +88,7 @@ Redis ops: 2s  <  Singleflight DB: 5s  <  HTTP handler: 10s
 Request → DB.Query() → Response
 ```
 
-Mọi request đều hit DB. Với pool=10 và latency=200ms, 100 concurrent requests gây **queuing nặng** (~1.5–2s avg latency). Đây là baseline để so sánh.
+Every request hits the DB. With pool=10 and latency=200ms, 100 concurrent requests cause **heavy queuing** (~1.5–2s avg latency). This is the baseline for comparison.
 
 ### 2. `/cache` — Cache-Aside (TTL = 30s)
 
@@ -98,7 +98,7 @@ Request → Redis GET
             └─ MISS → DB.Query() → Redis SET (30s) → return
 ```
 
-Chỉ request đầu tiên hit DB. Tất cả request sau đó hit cache → **latency < 5ms**.
+Only the first request hits the DB. All subsequent requests hit the cache → **latency < 5ms**.
 
 ### 3. `/cache-herd` — Thundering Herd 🌪
 
@@ -109,7 +109,7 @@ Request → Redis GET
                        ↑ NO singleflight protection!
 ```
 
-TTL = 3s. Khi hết hạn, 200 request ập vào cùng lúc → **tất cả đều miss** → **tất cả đều query DB** → pool exhaustion, latency spike ~4s. Đây là **thundering herd**.
+TTL = 3s. When it expires, 200 requests arrive simultaneously → **all miss** → **all query the DB** → pool exhaustion, latency spike ~4s. This is the **thundering herd**.
 
 ### 4. `/cache-protected` — Singleflight Fix 🛡
 
@@ -121,7 +121,7 @@ Request → Redis GET
                          └─ WAITERS → wait for leader's result → return
 ```
 
-Cùng TTL = 3s, nhưng `singleflight` gom 200 request thành **1 DB query duy nhất**. 199 request còn lại "ké" kết quả → **DB hits = 1, latency ổn định ~200ms**.
+With the same TTL = 3s, `singleflight` coalesces 200 requests into **a single DB query**. The other 199 requests "piggyback" on the result → **DB hits = 1, stable latency ~200ms**.
 
 ---
 
@@ -130,10 +130,10 @@ Cùng TTL = 3s, nhưng `singleflight` gom 200 request thành **1 DB query duy nh
 ### Prerequisites
 
 - **Go** 1.22+
-- **Redis** chạy trên `localhost:6379`
+- **Redis** running on `localhost:6379`
 
 ```bash
-# Redis bằng Docker (nếu chưa có)
+# Run Redis with Docker (if not already running)
 docker run -d --name redis-demo -p 6379:6379 redis:7
 ```
 
@@ -177,12 +177,12 @@ curl -s "localhost:8080/storm?mode=cache-herd" | jq
 curl -s "localhost:8080/storm?mode=cache-protected" | jq
 ```
 
-`/storm` tự động: reset metrics → xoá cache → spawn 200 goroutines → trả kết quả. **Deterministic, reproducible 100%.**
+`/storm` automatically: resets metrics → clears cache → spawns 200 goroutines → returns aggregated results. **Deterministic, 100% reproducible.**
 
-### 📈 Full Benchmark (dùng `hey`)
+### 📈 Full Benchmark (using `hey`)
 
 ```bash
-# Cài hey
+# Install hey
 go install github.com/rakyll/hey@latest
 
 # 1. NoCache — baseline (expect db_hits = 5000, latency ~1.5-2s)
@@ -198,7 +198,7 @@ curl -s localhost:8080/stats | jq
 # 3. CacheHerd — warm → expire → stampede
 curl -sX POST localhost:8080/reset
 curl -s localhost:8080/cache-herd > /dev/null  # warm cache
-sleep 4                                         # wait TTL (3s) to expire
+sleep 4                                         # wait for TTL (3s) to expire
 hey -n 200 -c 200 http://localhost:8080/cache-herd
 curl -s localhost:8080/stats | jq               # expect db_hits ≈ 200
 
@@ -219,7 +219,7 @@ curl -s localhost:8080/stats | jq               # expect db_hits = 1
 | `/cache-herd` | 200 | 200 | ~200 | ~190+ | ~200ms+ | 0 |
 | `/cache-protected` | 200 | 200 | 1 | 0 | ~200ms* | ~199 |
 
-> \* CacheProtected avg ≈ 200ms vì 199 requests chờ singleflight completion. Chúng **không hit DB** nhưng vẫn phải đợi kết quả từ leader request.
+> \* CacheProtected avg ≈ 200ms since 199 requests wait for singleflight completion. They **do not hit the DB** but still have to wait for the leader request's result.
 
 ---
 
@@ -229,7 +229,7 @@ curl -s localhost:8080/stats | jq               # expect db_hits = 1
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/nocache` | Luôn query DB, bypass cache |
+| `GET` | `/nocache` | Always queries the DB, bypassing cache |
 | `GET` | `/cache` | Cache-aside, TTL = 30s |
 | `GET` | `/cache-herd` | Cache-aside, TTL = 3s, **no** singleflight |
 | `GET` | `/cache-protected` | Cache-aside, TTL = 3s, **with** singleflight |
@@ -239,8 +239,8 @@ curl -s localhost:8080/stats | jq               # expect db_hits = 1
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/stats` | JSON metrics dashboard |
-| `POST` | `/reset` | Reset tất cả counters + xoá cache key |
-| `GET` | `/storm?mode=X` | Spawn 200 goroutines, trả kết quả tổng hợp |
+| `POST` | `/reset` | Resets all counters + deletes cache key |
+| `GET` | `/storm?mode=X` | Spawns 200 goroutines, returns summary |
 
 ### `/stats` response
 
@@ -337,17 +337,17 @@ for i := 0; i < 200; i++ {
 ## 🎯 Presentation Flow
 
 ```
-Step 1: /nocache          → "DB là bottleneck" (5000 hits, ~2s latency)
+Step 1: /nocache          → "DB is the bottleneck" (5000 hits, ~2s latency)
      │
-Step 2: /cache            → "Cache giảm 5000× DB hits" (1 hit, <5ms)
+Step 2: /cache            → "Cache reduces DB hits 5000×" (1 hit, <5ms)
      │
-Step 3: /cache-herd       → "Nhưng herd phá cache" (200 hits đồng thời!)
+Step 3: /cache-herd       → "But herd breaks the cache" (200 concurrent hits!)
      │
-Step 4: /cache-protected  → "Singleflight fix herd" (1 hit, 199 shared)
+Step 4: /cache-protected  → "Singleflight fixes the herd" (1 hit, 199 shared)
      │
      ▼
-  Kết luận: Caching tốt, nhưng cần bảo vệ.
-            Singleflight = request coalescing = ổn định hệ thống.
+ Conclusion: Caching is good, but protection is needed.
+             Singleflight = request coalescing = system stability.
 ```
 
 ---
