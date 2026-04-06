@@ -40,3 +40,7 @@ Thumbs.db
 .flaskenv*
 !.env.project
 !.env.vault
+.gitnexus
+.claude
+AGENTS.md
+CLAUDE.md
